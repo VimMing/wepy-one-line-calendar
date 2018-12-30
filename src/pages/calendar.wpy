@@ -1,0 +1,46 @@
+<style lang="scss">
+</style>
+<template>
+  <calendar :scheduleNumOfDay.sync="scheduleNumOfDay"></calendar>
+</template>
+
+<script>
+  import wepy from 'wepy'
+  import calendar from '@/components/calendar'
+
+  export default class Index extends wepy.page {
+    config = {
+      navigationBarTitleText: '首页'
+    }
+    components = {
+      calendar: calendar
+    }
+    data = {
+      scheduleNumOfDay: []
+    }
+
+    computed = {}
+
+    methods = {}
+
+    events = {}
+
+    onLoad () {
+      let today = new Date()
+      let str = `${today.getFullYear()}-${today.getMonth() + 1}`
+      this.scheduleNumOfDay.push({
+        day: str + `-${today.getDate()}`,
+        num: 1
+      })
+      this.scheduleNumOfDay.push({
+        day: str + `-${today.getDate() + 1}`,
+        num: 2
+      })
+      this.scheduleNumOfDay.push({
+        day: str + `-${today.getDate() - 1}`,
+        num: 3
+      })
+      this.$apply()
+    }
+  }
+</script>

@@ -1,0 +1,49 @@
+<style lang="scss">
+  .list {
+    width: 100%;
+    view {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 60px;
+      border-bottom: 1px solid #cccccc;
+      width: 100%;
+      background-color: white;
+    }
+    view.hover {
+      background-color: #F9F9F9;
+    }
+  }
+</style>
+<template>
+  <view class="list">
+    <view hover-class="hover" @tap="navigate('/pages/calendar')">日历组件</view>
+  </view>
+</template>
+
+<script>
+  import wepy from 'wepy'
+
+  export default class Index extends wepy.page {
+    config = {
+      navigationBarTitleText: '首页'
+    }
+    components = {}
+    data = {}
+
+    computed = {}
+
+    methods = {
+      navigate (url) {
+        wepy.navigateTo({
+          url: url
+        })
+      }
+    }
+
+    events = {}
+
+    onLoad () {
+    }
+  }
+</script>

@@ -1,0 +1,492 @@
+<script>
+  /* eslint-disable no-return-assign */
+
+  /***********************************************
+   * @功能：wepy日历组件
+   * @维护：VimMingshe@gmail.com
+   **********************************************/
+  import wepy from 'wepy'
+
+  const dateUtils = {
+    // 日、月去掉前缀0
+    rmDatePrefix: d => parseInt(d),
+    // 给日、月添加前缀0
+    addDatePrefix: d => `0${d}`.slice(-2),
+    /**
+     * 当前日期面板中包含几天是上个月的; 例如结果是3，则当前日期面板中，有3天是上个月的
+     */
+    getPreMonthBlendDay: (year, month) => {
+      return new Date(year, month - 1, 1).getDay()
+    },
+    /**
+     * 获取某年某月总天数
+     */
+    getMonthDays: (year, month) => {
+      return new Date(year, month, 0).getDate()
+    },
+    /**
+     * 获取完整的年月日 YYYY-MM-DD
+     */
+    getFullDate: (year, month, day) => {
+      const addDatePrefix = dateUtils.addDatePrefix
+      month = addDatePrefix(month)
+      day = addDatePrefix(day)
+      return `${year}-${month}-${day}`
+    },
+    /**
+     * 格式化日期
+     * @param {string|number|date} d
+     * @returns {string} YYYY-MM-YY
+     */
+    formatDate: d => {
+      const addDatePrefix = dateUtils.addDatePrefix
+      let date = new Date(d)
+      let year = date.getFullYear()
+      let month = addDatePrefix(date.getMonth() + 1)
+      let day = addDatePrefix(date.getDate())
+      return `${year}-${month}-${day}`
+    }
+  }
+
+  export default class calendar extends wepy.component {
+    props = {
+      refreshCalendar: {
+        type: Boolean,
+        default: true
+      },
+      // 高亮的日期，类型 YYYY-MM-DD
+      date: {
+        type: String,
+        default: dateUtils.formatDate(new Date())
+      },
+      scheduleNumOfDay: {
+        type: Array,
+        default: []
+      }
+    }
+    data = {
+      weeks: ['日', '一', '二', '三', '四', '五', '六'],
+      currYear: '',
+      currMonth: '',
+      // 此数组长度为35或42
+      panelDaysList: [],
+      panelDaysMatrix: [],
+      translateX: 0,
+      translateIndex: 0,
+      start: {
+        x: 0,
+        y: 0
+      },
+      end: {
+        x: 0,
+        y: 0
+      },
+      isMove: false,
+      countExe: 0,
+      selectedDay: '',
+      today: {},
+      addTransition: false,
+      direction: 0 // 0 没有方向 1左滑 2右滑
+    }
+
+    onLoad () {
+      this.goBackToday()
+      this.$apply()
+    }
+
+    resetItemKey (key, value) {
+      this.panelDaysMatrix.map(item => item.map(_item => _item[key] = value)
+      )
+    }
+
+    goBackToday () {
+      const [year, month] = this.date.split('-')
+      this.resetPanelDays(year, month)
+      this.$apply()
+    }
+
+    methods = {
+      goBackToday () {
+        this.resetItemKey('select', false)
+        this.today.select = true
+        this.$apply()
+        this.goBackToday()
+      },
+      /**********************
+       * 监听滑动事件 @touchS @touchM
+       **********************/
+      touchS (e) {
+        this.start = {
+          x: e.changedTouches[0].clientX,
+          y: e.changedTouches[0].clientY
+        }
+        this.isMove = true
+        this.$apply()
+      },
+      touchM (e) {
+        // 距离40时触发
+        const DEBOUNCE = 25
+        this.end = {
+          x: e.changedTouches[0].clientX,
+          y: e.changedTouches[0].clientY
+        }
+        if (this.isMove) {
+          let distance = this.end.x - this.start.x
+          if (DEBOUNCE < Math.abs(distance)) {
+            this.isMove = false
+            if (distance < 0 && Math.abs(this.translateIndex) < this.panelDaysMatrix.length - 1) {
+              --this.translateIndex
+            } else if (distance > 0 && this.translateIndex < 0) {
+              ++this.translateIndex
+            } else {
+              // 已经到到底了不能滑动了
+              this.addTransition = false
+              if (distance < 0) {
+                // 左滑
+                let d = new Date(this.currYear, this.currMonth)
+                this.direction = 1
+                this.resetPanelDays(d.getFullYear(), d.getMonth() + 1)
+              } else {
+                // 右滑
+                let d = new Date(this.currYear, this.currMonth - 2)
+                this.direction = 2
+                this.resetPanelDays(d.getFullYear(), d.getMonth() + 1)
+              }
+            }
+            this.translateX = (100 * this.translateIndex) + '%'
+          }
+        }
+        this.$apply()
+      },
+      tapDayItem (item, i, j) {
+        this.resetItemKey('select', false)
+        this.panelDaysMatrix[i][j].select = true
+        this.$emit('selectDay', item)
+        this.selectedDay = item
+        this.$apply()
+      },
+      /**
+       * 改变日期选择器value后的回调，event.detail = {value: value}
+       * @param {number} modify 用于对month进行微调
+       */
+      changePicker (e) {
+        const value = e.detail.value
+        if (!value) {
+          return
+        }
+        const [year, month] = value.split('-')
+        this.resetPanelDays(year, month)
+        this.$emit('selectMonth', `${year}-${month}`)
+      },
+      slotTap () {
+        this.$emit('userDefineTap')
+      }
+    }
+
+    /*******************
+     * 获取上个月的日期数据
+     *******************/
+    getPreMonthBlendDays (year, monthNum) {
+      const resultList = []
+      const preMonthBlendDay = dateUtils.getPreMonthBlendDay(year, monthNum)
+      let thisMonthNum = monthNum - 1
+      let thisYear = year
+      if (monthNum === 1) {
+        thisYear = year - 1
+        thisMonthNum = 12
+      }
+      let preMonthFullDays = dateUtils.getMonthDays(thisYear, thisMonthNum)
+      for (let i = 0; i < preMonthBlendDay; i++) {
+        const dayItem = this.setDayItem(
+          thisYear,
+          thisMonthNum,
+          preMonthFullDays--,
+          'pre'
+        )
+        resultList.unshift(dayItem)
+      }
+      return resultList
+    }
+
+    /*******************
+     * 获取这个月的日期数据
+     *******************/
+    getThisMonthBlendDays (year, monthNum) {
+      const resultList = []
+      const thisMonthFullDays = dateUtils.getMonthDays(year, monthNum)
+      for (let i = 1; i <= thisMonthFullDays; i++) {
+        const dayItem = this.setDayItem(year, monthNum, i, 'curr')
+        resultList.push(dayItem)
+      }
+      return resultList
+    }
+
+    /*********************
+     *下个月需要展示的数据
+     ********************/
+    getNextMonthBlendDays (year, monthNum, monthBlendDays) {
+      if (monthNum + 1 > 12) {
+        ++year
+        monthNum = monthNum % 12
+      }
+      const resultList = []
+      for (let i = 1; i <= monthBlendDays; i++) {
+        const dayItem = this.setDayItem(year, monthNum + 1, i, 'next')
+        resultList.push(dayItem)
+      }
+      return resultList
+    }
+
+    /**
+     * 根据传进来的date，计算年、月、当前月面板内的所有日（包含上月和下月的连接日）
+     * @param {string} year YYYY
+     * @param {string} month MM
+     */
+    resetPanelDays (year, month) {
+      if (this.currYear === year && this.currMonth === month) {
+        return
+      }
+      this.translateIndex = 0
+      this.translateX = 0
+      const monthNum = dateUtils.rmDatePrefix(month)
+      let panelDaysList = []
+
+      // 将上个月需要展示的数据添加进panelDaysList数组
+      const preMonthBlendDays = this.getPreMonthBlendDays(year, monthNum)
+      this.preMonthBlendDays = preMonthBlendDays.length
+      panelDaysList.push(...preMonthBlendDays)
+
+      // 将本月月需要展示的数据添加进panelDaysList数组
+      const thisMonthDays = this.getThisMonthBlendDays(year, monthNum)
+      panelDaysList.push(...thisMonthDays)
+      /*******************************
+       * 将下个月需要展示的数据添加进panelDaysList数组,
+       * 如果当前月和上个月需展示天数超过35，则一共需要展示42天,
+       * 未超过35天时，则一共展示35天；
+       **********************************/
+      const existDays = preMonthBlendDays.length + thisMonthDays.length
+      const nextMonthBlendDay = (existDays > 35 ? 42 : 35) - existDays
+      const nextMonthBlendDays = this.getNextMonthBlendDays(
+        year,
+        monthNum,
+        nextMonthBlendDay
+      )
+      panelDaysList.push(...nextMonthBlendDays)
+      this.currYear = year
+      this.currMonth = month
+      this.panelDaysList = panelDaysList
+      this.moveTo()
+      this.setAddTransition(true)
+      this.setScheduleNum()
+      this.$apply()
+    }
+
+    moveTo () {
+      this.panelDaysMatrix = []
+      this.panelDaysList.map((item, index) => {
+        let [r, c] = [Math.floor(index / 7), index % 7]
+        this.panelDaysMatrix[r] = this.panelDaysMatrix[r] || []
+        this.panelDaysMatrix[r][c] = item
+        if (item.active === true) {
+          this.translateIndex = -r
+          this.translateX = (100 * this.translateIndex) + '%'
+        }
+      })
+      if (this.direction === 1) {
+        // 左滑
+        this.translateIndex = 0
+        this.translateX = (100 * this.translateIndex) + '%'
+      } else if (this.direction === 2) {
+        // 右滑
+        this.translateIndex = -Math.floor((this.panelDaysList.length - 1) / 7)
+        console.log(this.translateIndex)
+        this.translateX = (100 * this.translateIndex) + '%'
+      }
+      this.direction = 0
+      this.$apply()
+    }
+
+    setAddTransition (status = false) {
+      if (status) {
+        setTimeout(() => {
+          this.addTransition = true
+          this.$apply()
+        }, 1000 / 60)
+      } else {
+        this.addTransition = false
+        this.$apply()
+      }
+    }
+
+    /******************
+     * 设置日期对象
+     *****************/
+    setDayItem (year, month, day, type = 'curr') {
+      day = dateUtils.addDatePrefix(day)
+      const fullDate = dateUtils.getFullDate(year, month, day)
+      let dayItem = {
+        type,
+        day,
+        fullDate,
+        scheduleNum: 0
+      }
+      this.setActiveItemProp(dayItem)
+      return dayItem
+    }
+
+    setActiveItemProp (dayItem) {
+      if (dayItem.fullDate === this.date) {
+        dayItem.active = true
+        dayItem.select = true
+        this.today = dayItem
+        this.selectedDay = dayItem
+        this.$apply()
+      }
+    }
+
+    setScheduleNum (n = this.scheduleNumOfDay) {
+      if (this.panelDaysMatrix.length === 0) {
+        return
+      }
+      n.map(item => {
+        let days = parseInt(item.day.split('-')[2]) + this.preMonthBlendDays - 1
+        let [r, c] = [Math.floor(days / 7), days % 7]
+        this.panelDaysMatrix[r][c].scheduleNum = item.num
+      })
+      this.$apply()
+    }
+
+    watch = {
+      scheduleNumOfDay (n) {
+        this.setScheduleNum(n)
+      },
+      refreshCalendar () {
+        this.$emit('selectDay', this.selectedDay)
+      }
+    }
+  }
+</script>
+<template>
+  <view class="wepy-com-calendar-root">
+    <view class="schedule-title">
+      <view class="day active" @tap="goBackToday">今日</view>
+      <view class="year-month">
+        <picker class="picker" mode="date" fields="month" value="{{currYear}}-{{currMonth}}" @change="changePicker">
+          {{currYear}}年{{currMonth}}月
+        </picker>
+      </view>
+      <view class="add" @tap="slotTap">
+        <slot name="slot"></slot>
+      </view>
+    </view>
+    <view style="overflow-x: hidden">
+      <view class="weeks">
+        <view class="day" wx:for="{{weeks}}" wx:for-index="idx" wx:for-item="item" wx:key="idx">
+          {{item}}
+        </view>
+      </view>
+      <view class="calendar-container {{addTransition ? 'transition' : ''}}"
+            style="transform: translateX({{translateX}})" @touchstart="touchS"
+            @touchmove="touchM">
+        <view class="week" wx:for="{{panelDaysMatrix}}" wx:for-index="idx" wx:for-item="item" wx:key="idx">
+          <view class="day" wx:for="{{item}}" wx:for-index="_idx" wx:for-item="_item" wx:key="_idx">
+            <view class="{{_item.type}} {{_item.active ? 'active' : ''}} {{_item.select ? 'select' : '' }}"
+                  @tap="tapDayItem({{_item}}, {{idx}}, {{_idx}})">
+              {{_item.active ? '今' : _item.day}}
+            </view>
+            <view class="scheduleNum" wx:if="{{_item.scheduleNum}}">
+              {{_item.scheduleNum}}
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<style lang="scss" scoped>
+  $primary: #DA251D;
+  $font-light: #999999;
+  $font-contrast: white;
+  $f-14: 14px;
+
+  .active {
+    color: $primary;
+  }
+
+  .active.select, .select {
+    background-color: $primary;
+    color: $font-contrast !important;
+  }
+
+  .schedule-title {
+    font-size: $f-14;
+    line-height: 20px;
+    padding: 12px 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    color: $font-light;
+    .add {
+      font-size: 20px;
+    }
+  }
+
+  .calendar-container {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+  }
+
+  .calendar-container.transition {
+    transition: transform .4s ease;
+  }
+
+  .week, .weeks {
+    min-width: 100%;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin: 20px 0;
+    .day {
+      display: flex;
+      position: relative;
+      justify-content: center;
+      align-items: center;
+      width: 40px;
+      height: 40px;
+      .scheduleNum {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: absolute;
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        background-color: $primary;
+        color: $font-contrast;
+        top: -2px;
+        right: -2px;
+        font-size: 8px;
+      }
+      .pre, .next, .curr {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        box-sizing: border-box;
+      }
+      .pre, .next {
+        color: $font-light;
+      }
+    }
+    view.day:first-child, view.day:last-child {
+      color: $font-light;
+    }
+  }
+
+  .weeks {
+    margin: 0;
+  }
+</style>
