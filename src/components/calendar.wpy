@@ -349,9 +349,13 @@
         return
       }
       n.map(item => {
-        let days = parseInt(item.day.split('-')[2]) + this.preMonthBlendDays - 1
-        let [r, c] = [Math.floor(days / 7), days % 7]
-        this.panelDaysMatrix[r][c].scheduleNum = item.num
+        let [year, month, days] = item.day.split('-').map(i => parseInt(i))
+//        console.log(year, month, days, this.currYear, this.currMonth)
+        days = days + this.preMonthBlendDays - 1
+        if (year === +this.currYear && month === +this.currMonth) {
+          let [r, c] = [Math.floor(days / 7), days % 7]
+          this.panelDaysMatrix[r][c].scheduleNum = item.num
+        }
       })
       this.$apply()
     }

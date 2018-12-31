@@ -6,7 +6,8 @@
 
 <script>
   import wepy from 'wepy'
-  import calendar from '@/components/calendar'
+  //  import calendar from '@/components/calendar'
+  import calendar from 'wepy-one-line-calendar'
 
   export default class Index extends wepy.page {
     config = {
